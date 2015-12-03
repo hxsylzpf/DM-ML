@@ -1,5 +1,3 @@
-import javax.swing.tree.TreeNode
-
 import scala.collection.mutable.{Stack, ArrayBuffer, HashMap}
 
 class TreeNode {
