@@ -3,7 +3,7 @@ import javax.swing.tree.TreeNode
 import scala.collection.mutable.{Stack, ArrayBuffer, HashMap}
 
 class TreeNode {
-	var featureIndex = 0                           // 这个树结点所对应的特征下标
+  var featureIndex = 0                           // 这个树结点所对应的特征下标
 	var label = ""                                // 预测类别
 	val children = new HashMap[String, TreeNode]
 
@@ -79,7 +79,7 @@ object DecisionTree {
 	}
 }
 
-object Util {
+object DecisionTreeUtil {
   // 深度优先搜索
   private def deepFirstTraverse(root: TreeNode): Unit = {
     val stack: Stack[TreeNode] = new Stack()
@@ -118,7 +118,7 @@ object DecisionTreeMain extends App {
 	data.append(("N",Array("old","N","N","ok")))
 
 	val decisionTree = new DecisionTree(DecisionTree.buildTree(data.toArray, Array(0,1,2,3)))
-	Util.print(decisionTree.root)
+  DecisionTreeUtil.print(decisionTree.root)
 	val predictLabel = decisionTree.predict(Array("old","Y","Y","good"))
 	println(predictLabel)
 }
