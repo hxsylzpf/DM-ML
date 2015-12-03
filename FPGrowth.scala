@@ -1,9 +1,9 @@
 import java.io.PrintWriter
+
+import scala.collection.mutable
+import scala.collection.mutable.{ArrayBuffer, HashMap, Stack}
 import scala.io.Source
 import scala.util.Random
-import scala.collection.mutable.ArrayBuffer
-import scala.collection.mutable.HashMap
-import scala.collection.mutable.Stack
 
 class Node(val parent: Node) {
     var value: String = _
@@ -14,10 +14,16 @@ class Node(val parent: Node) {
 
 object Util {
 
-    def readFile(path: String): Array[String] = {
+    def constructTransactions(path: String): Array[String] = {
         val reader = Source.fromFile(path)
         val lines = reader.getLines.toArray
-        lines
+        val transactions = lines.map(line => {
+          val items = line.split("::")
+          (items(0),items(1))
+        }).groupBy(x=>x._1).map(x=>{
+        x._2.map(x=>x._2).mkString(" ")
+      })
+      transactions.toArray
     }
 
     def writeFile(path: String): Unit = {
@@ -52,50 +58,107 @@ object Util {
     }
 }
 
-object Executor extends App {
-    val path = "C://Users//zzz0419//Desktop//a.txt"
-    val transactions = Util.readFile(path)
-    val minSupport = 2
-    val itemCount = transactions.flatMap(t=>t.split(" ")).groupBy(item=>item).mapValues(v=>v.size).filter(x=>x._2>=minSupport)
-    for ((k, v) <- itemCount)
-        println(k + " : " + v)
 
-    val itemPointer = new HashMap[String,ArrayBuffer[Node]]
-    for(k <- itemCount.keys)
-        itemPointer(k) = new ArrayBuffer[Node]
+class FPGrowth(val transactions:Array[String],val minSupport:Int) {
 
     val fpTree = new Node(null)
-    transactions.foreach(t => {
-        //println("transaction:"+t.mkString(" "))
-        var root = fpTree
-        t.split(" ").filter(x=>itemCount.contains(x)).sortBy(x => -itemCount(x)).foreach(item => {
-            //println("item: "+item)
-            val t = root.children.get(item)
-            if (t.isEmpty) {
-                val node = new Node(root)
-                node.value = item
-                root.children(item) = node
-                itemPointer(item) += node
-                root = node
-            } else {
-                t.get.counter += 1
-                root = t.get
-            }
+    val itemPointer = new HashMap[String,ArrayBuffer[Node]]
+
+    def buildFPTree():Node = {
+        // first traverse the database
+        val itemCount = transactions
+            .flatMap(x=>x.split(" "))
+            .groupBy(item=>item)
+            .mapValues(v=>v.size)
+            .filter(x=>x._2>=minSupport)
+
+        // initialize itemPointer
+        for(k <- itemCount.keys)
+            itemPointer(k) = new ArrayBuffer[Node]
+
+        // second traverse the database
+        transactions.foreach(t => {
+            var root = fpTree
+            t.split(" ")
+                .filter(x=>itemCount.contains(x))
+                .sortBy(x => -itemCount(x))
+                .foreach(item => {
+                val itemNode = root.children.get(item)
+                if (itemNode.isEmpty) {
+                    val node = new Node(root)
+                    node.value = item
+                    root.children(item) = node
+                    itemPointer(item) += node
+                    root = node
+                } else {
+                    itemNode.get.counter += 1
+                    root = itemNode.get
+                }
+            })
         })
-        //println(t.sortBy(x => -itemCount(x)).mkString(" "))
-    })
-    Util.printTree(fpTree)
-
-    def genCondTransaction(n:Node): Array[String] = {
-        var p = n.parent
-        val res = new ArrayBuffer[String]
-        while (!p.isRoot) {
-            res += p.value
-            p = p.parent
-        }
-        res.toArray
+        fpTree
     }
-    val pointers = itemPointer("I5")
-    val conTransactions = pointers.flatMap(p => genCondTransaction(p)).groupBy(x => x).mapValues(v=>v.size).filter(x=>x._2>=minSupport)
 
+    def genConditionalPatternBase(itemNodes:Array[Node]): Array[Array[(String,Int)]] = {
+        val patterns = new ArrayBuffer[Array[(String,Int)]]()
+        for (itemNode <- itemNodes) {
+            var parent = itemNode.parent
+            val path = new ArrayBuffer[(String,Int)]()
+            while (!parent.isRoot) {
+                path += Tuple2(parent.value,itemNode.counter)
+                parent = parent.parent
+            }
+            patterns += path.toArray
+        }
+        patterns.toArray
+    }
+
+    def generatePattern(cands: Array[String]): Array[String] = {
+        if (cands.size == 0)
+            return Array()
+        val fqPatterns = ArrayBuffer[String]()
+        for (i <- 0 until cands.size) {
+            val item = cands(i)
+            fqPatterns += item
+            for (rr <- generatePattern(cands.slice(i+1, cands.size))) {
+                fqPatterns += (item + " " + rr)
+            }
+        }
+        fqPatterns.toArray
+    }
+
+    def mineFrequentPattern(): Array[String] = {
+        val freqPatterns = new ArrayBuffer[String]
+        for(item <- itemPointer) {
+            val condPatterns = this.genConditionalPatternBase(item._2.toArray)
+            val cands = condPatterns.reduce(_ ++ _)
+                                    .groupBy(item => item._1)
+                                    .map(item => (item._1, item._2.size))
+                                    .filter(item => item._2 >= minSupport)
+                                    .map(item => item._1).toArray
+
+            val partialPatterns = generatePattern(cands)
+            if (partialPatterns.size == 0)
+                freqPatterns += item._1
+            else
+                freqPatterns ++= partialPatterns.map(p => item._1 + " " + p)
+        }
+        freqPatterns.toArray
+    }
+
+}
+
+object FPGrowth {
+    def main(args: Array[String]) {
+        val path = "/home/zzz/desktop/ml-10M100K/test.dat"
+        val transactions = Util.constructTransactions(path)
+        val minSupport = 2
+        println("construction transactions finished!")
+
+        val fpg = new FPGrowth(transactions,minSupport)
+        val fpTree = fpg.buildFPTree()
+        println("===========fp-tree=========")
+        Util.printTree(fpTree)
+        println()
+    }
 }
