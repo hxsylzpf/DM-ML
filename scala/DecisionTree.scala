@@ -3,58 +3,46 @@ import javax.swing.tree.TreeNode
 import scala.collection.mutable.{Stack, ArrayBuffer, HashMap}
 
 class TreeNode {
-	var index = 0
-	var label = ""
+	var featureIndex = 0                           // 这个树结点所对应的特征下标
+	var label = ""                                // 预测类别
 	val children = new HashMap[String, TreeNode]
 
 	def isLeaf(): Boolean = children.size == 0
 }
 
 class DecisionTree(val root: TreeNode) {
-	val stack: Stack[TreeNode] = new Stack
 
+  // 预测样本
 	def predict(data: Array[String]): String = {
 		var t = root
 		while (!t.isLeaf()) {
-			t = t.children(data(t.index))
+			t = t.children(data(t.featureIndex))
 		}
 		t.label
-	}
-
-	private def deepFirstTraverse(root: TreeNode): Unit = {
-		stack.push(root)
-		if (root.children.size == 0) {
-			println(stack.filter(item => !item.isLeaf()).map(item => item.index).mkString(" ")+": "+stack.pop.label)
-		} else {
-			for (c <- root.children.values) {
-				deepFirstTraverse(c)
-			}
-			stack.pop
-		}
-	}
-	def print(): Unit = {
-		deepFirstTraverse(root)
 	}
 }
 
 object DecisionTree {
 	private def log2(x:Double) = math.log(x) / math.log(2.0)
 
+  // 计算数据集合的熵
 	def entropy(data:Array[(String,Array[String])]): Double = {
-		val values = data.groupBy(x=>x._1).mapValues(v=>v.size).values
+		val classCounters = data.groupBy(x=>x._1).mapValues(v=>v.size).values
 		var impurity = 0.0
-		val totalCount = values.sum.toDouble
-		for (classCount <- values) {
+		val totalCount = classCounters.sum.toDouble
+		for (classCount <- classCounters) {
 			val freq = classCount / totalCount
 			impurity -= freq*log2(freq)
 		}
 		impurity
 	}
 
+  // 数据集中的数据类别相同时停止
 	def canStop(data:Array[(String,Array[String])]): Boolean = {
 		data.groupBy(x => x._1).size == 1
 	}
 
+  // 寻找信息增益最大的特征
 	def findBestSplit(data:Array[(String,Array[String])], attrIndices:Array[Int]): Int = {
 		val bestSplitIndex = attrIndices.map(i => {
 			var infoGain = DecisionTree.entropy(data.toArray)
@@ -69,6 +57,7 @@ object DecisionTree {
 		bestSplitIndex
 	}
 
+  // 构建决策树
 	def buildTree(data:Array[(String,Array[String])], attrIndices:Array[Int]): TreeNode = {
 		if (attrIndices.size == 0) {
 			val root = new TreeNode
@@ -81,13 +70,33 @@ object DecisionTree {
 			return root
 		} else {
 			val root = new TreeNode
-			root.index = findBestSplit(data,attrIndices)
-			data.groupBy(x=>x._2(root.index)).foreach(x=>{
-				root.children(x._1) = buildTree(x._2,attrIndices.filter(i=>i!=root.index))
+			root.featureIndex = findBestSplit(data,attrIndices)
+			data.groupBy(x=>x._2(root.featureIndex)).foreach(x=>{
+				root.children(x._1) = buildTree(x._2,attrIndices.filter(i=>i!=root.featureIndex))
 			})
 			return root
 		}
 	}
+}
+
+object Util {
+  // 深度优先搜索
+  private def deepFirstTraverse(root: TreeNode): Unit = {
+    val stack: Stack[TreeNode] = new Stack()
+    stack.push(root)
+    if (root.children.size == 0) {
+      println(stack.filter(item => !item.isLeaf()).map(item => item.featureIndex).mkString(" ")+": "+stack.pop.label)
+    } else {
+      for (c <- root.children.values) {
+        deepFirstTraverse(c)
+      }
+      stack.pop
+    }
+  }
+  // 打印决策树模型
+  def print(root: TreeNode): Unit = {
+    deepFirstTraverse(root)
+  }
 }
 
 object DecisionTreeMain extends App {
@@ -109,7 +118,7 @@ object DecisionTreeMain extends App {
 	data.append(("N",Array("old","N","N","ok")))
 
 	val decisionTree = new DecisionTree(DecisionTree.buildTree(data.toArray, Array(0,1,2,3)))
-	decisionTree.print
+	Util.print(decisionTree.root)
 	val predictLabel = decisionTree.predict(Array("old","Y","Y","good"))
 	println(predictLabel)
 }
